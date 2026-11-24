@@ -23,7 +23,8 @@ KNOWN_EXE_HASHES = {
     "2784fe59e6ff602c8efef84d927d7f718db875bc2b6e527c724646635aaff6ca": "ptsm-only (PTSM fix applied)",
     "6aa419978a78dab941b6cafce4a777d8237bfad52d3e2e01dc8e729f1deabb36": "fully-patched-v1 (PTSM + WinHttpConnect + WS2 connect; run apply to add DNS/UDP fail-fast)",
     "2dc02098412f96f46749b4cb64a2aa49c6e839510199fb15840d683bb0c3fc8e": "fully-patched-v2 (PTSM + full Network fail-fast; run apply to add NikeIdStyle shoe fix)",
-    "0e3262d3376f75d053820976e890c948193bd4a5e6f4965a2d5e6692b325c61a": "fully-patched (PTSM + NikeIdStyle shoe fix + full Network fail-fast)",
+    "0e3262d3376f75d053820976e890c948193bd4a5e6f4965a2d5e6692b325c61a": "fully-patched-v3 (PTSM + NikeIdStyle + full Network fail-fast; run apply to add Season Prizes blackscreen fix)",
+    "ec057958ae6d42b044fc52f92ca31d38841487e2878aaf5837e940d4ae57c26f": "fully-patched (PTSM + NikeIdStyle + Season Prizes offline fix + full Network fail-fast)",
 }
 
 # --- PTSM Fixup ---
@@ -120,6 +121,16 @@ NIKEID_STUB = bytes.fromhex(
     "48638ff80000004885c97e374c8b8f000100004d85c97416498b41084885c074"
     "274883c007486bd1184839d0731ac787f80000000000000048c7870001000000"
     "000000e927acc7f94531d2e98cabc7f9"
+)
+
+# --- Season Prizes Offline Blackscreen Fix ---
+SEASONS_HOOK_OFF = 0x004650DD
+SEASONS_ORIG = bytes.fromhex("e83eccab00")
+SEASONS_PATCHED = bytes.fromhex("e81efc8306")
+SEASONS_CAVE_OFF = 0x04EEEB00
+SEASONS_STUB = bytes.fromhex(
+    "81bc2408010000a8214550751281bc2410010000a82145507505e901d027fab8"
+    "0100000089059e991ffe31c04889059deb1ffe4889059eeb1ffec3"
 )
 
 
@@ -245,6 +256,34 @@ def apply_nikeid(f, force: bool) -> bool:
     return True
 
 
+def apply_seasons(f, force: bool) -> bool:
+    f.seek(SEASONS_HOOK_OFF)
+    hook_bytes = f.read(len(SEASONS_ORIG))
+    f.seek(SEASONS_CAVE_OFF)
+    cave_bytes = f.read(len(SEASONS_STUB))
+
+    if hook_bytes == SEASONS_PATCHED and cave_bytes == SEASONS_STUB:
+        print("[SEAS] Already applied, skipping.")
+        return False
+
+    if hook_bytes != SEASONS_ORIG and not force:
+        raise RuntimeError(
+            f"[SEAS] Unexpected bytes at 0x{SEASONS_HOOK_OFF:x}: {hook_bytes.hex()}. "
+            "Use --force to override."
+        )
+    if cave_bytes != b"\x00" * len(SEASONS_STUB) and not force:
+        raise RuntimeError(
+            f"[SEAS] .bind cave at 0x{SEASONS_CAVE_OFF:x} is not empty. Use --force to override."
+        )
+
+    f.seek(SEASONS_CAVE_OFF)
+    f.write(SEASONS_STUB)
+    f.seek(SEASONS_HOOK_OFF)
+    f.write(SEASONS_PATCHED)
+    print("[SEAS] Applied Season Prizes offline blackscreen guard.")
+    return True
+
+
 def cmd_apply(args: argparse.Namespace) -> int:
     exe_path = args.exe
     if not os.path.isfile(exe_path):
@@ -260,10 +299,11 @@ def cmd_apply(args: argparse.Namespace) -> int:
         )
         return 1
 
-    any_flag = args.all or args.ptsm_only or args.net_only or args.nikeid_only
+    any_flag = args.all or args.ptsm_only or args.net_only or args.nikeid_only or args.seasons_only
     do_ptsm = args.all or args.ptsm_only or not any_flag
     do_net = args.all or args.net_only or not any_flag
     do_nikeid = args.all or args.nikeid_only or not any_flag
+    do_seasons = args.all or args.seasons_only or not any_flag
 
     if not args.no_backup:
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -276,6 +316,8 @@ def cmd_apply(args: argparse.Namespace) -> int:
             apply_ptsm(f, args.force)
         if do_nikeid:
             apply_nikeid(f, args.force)
+        if do_seasons:
+            apply_seasons(f, args.force)
         if do_net:
             apply_net(f, args.force)
 
@@ -298,9 +340,10 @@ def main() -> int:
     p_apply = sub.add_parser("apply", help="Apply offline-mode patches to NBA2K22.exe")
     p_apply.add_argument("exe", help="Path to NBA2K22.exe")
     mode = p_apply.add_mutually_exclusive_group()
-    mode.add_argument("--all", action="store_true", help="Apply PTSM, NikeIdStyle, and Network fail-fast patches (default)")
+    mode.add_argument("--all", action="store_true", help="Apply PTSM, NikeIdStyle, Season Prizes, and Network fail-fast patches (default)")
     mode.add_argument("--ptsm-only", action="store_true", help="Apply only the PTSM v1.12 MyCAREER crash fix")
     mode.add_argument("--nikeid-only", action="store_true", help="Apply only the NikeIdStyle v1.12 shoe fix")
+    mode.add_argument("--seasons-only", action="store_true", help="Apply only the Season Prizes offline blackscreen fix")
     mode.add_argument("--net-only", action="store_true", help="Apply only the Network fail-fast patch")
     p_apply.add_argument("--no-backup", action="store_true", help="Do not create a .bak file before patching")
     p_apply.add_argument("--force", action="store_true", help="Bypass size/hash safety checks")

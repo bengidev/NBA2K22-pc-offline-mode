@@ -23,6 +23,8 @@ test:
 	$(RUN_X86) ./build/test_net_failfast
 	$(CC_X86) -O2 tests/test_nikeid.c src/nikeid_guard_test.s -o build/test_nikeid
 	$(RUN_X86) ./build/test_nikeid </dev/null
+	$(CC_X86) -O2 tests/test_seasons.c src/seasons_guard_test.s -o build/test_seasons
+	$(RUN_X86) ./build/test_seasons </dev/null
 
 verify-stubs:
 	python3 src/rebuild_stubs.py
