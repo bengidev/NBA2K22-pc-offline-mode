@@ -1,0 +1,13 @@
+# Binaries & backups
+*.exe
+*.dll
+*.bak*
+*.o
+*.bin
+build/
+_save_backups/
+
+# OS & Python
+.DS_Store
+__pycache__/
+*.pyc
