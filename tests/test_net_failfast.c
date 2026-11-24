@@ -7,6 +7,10 @@
 uint32_t g_mock_last_error = 0;
 int g_real_winhttp_called = 0;
 int g_real_ws2_called = 0;
+int g_real_ghbn_called = 0;
+int g_real_sendto_called = 0;
+static const void* g_expected_sendto_to = NULL;
+static int g_expected_sendto_tolen = 0;
 
 __attribute__((ms_abi))
 void* mock_real_winhttp_connect(void* hSession, const uint16_t* pswzServerName, uint16_t nServerPort, uint32_t dwReserved) {
@@ -23,10 +27,35 @@ int mock_real_ws2_connect(uint64_t s, const void* name, int namelen) {
 }
 
 __attribute__((ms_abi))
+void* mock_real_ws2_gethostbyname(const char* name) {
+    (void)name;
+    g_real_ghbn_called++;
+    return (void*)0xCAFEBABEULL;
+}
+
+__attribute__((ms_abi))
+int mock_real_ws2_sendto(uint64_t s, const char* buf, int len, int flags, const void* to, int tolen) {
+    assert(s == 0x11223344ULL);
+    assert(strcmp(buf, "ping") == 0);
+    assert(len == 4);
+    assert(flags == 0x55);
+    assert(to == g_expected_sendto_to);
+    assert(tolen == g_expected_sendto_tolen);
+    g_real_sendto_called++;
+    return len;
+}
+
+__attribute__((ms_abi))
 extern void* winhttp_connect_failfast(void* hSession, const uint16_t* pswzServerName, uint16_t nServerPort, uint32_t dwReserved);
 
 __attribute__((ms_abi))
 extern int ws2_connect_failfast(uint64_t s, const void* name, int namelen);
+
+__attribute__((ms_abi))
+extern void* ws2_gethostbyname_failfast(const char* name);
+
+__attribute__((ms_abi))
+extern int ws2_sendto_failfast(uint64_t s, const char* buf, int len, int flags, const void* to, int tolen);
 
 static void to_utf16(const char* s, uint16_t* out, size_t max_chars) {
     size_t i = 0;
@@ -108,6 +137,67 @@ int main(void) {
     assert(g_mock_last_error == 10061);
     assert(g_real_ws2_called == 2);
 
-    printf("ALL NET FAILFAST TESTS PASSED (10/10)\n");
+    // 11-17. WS2_32!gethostbyname
+    g_mock_last_error = 0;
+    g_real_ghbn_called = 0;
+    assert(ws2_gethostbyname_failfast("api.nba2k.com") == NULL);
+    assert(g_mock_last_error == 11001);
+    assert(g_real_ghbn_called == 0);
+
+    g_mock_last_error = 0;
+    assert(ws2_gethostbyname_failfast("a") == NULL);
+    assert(g_mock_last_error == 11001);
+    assert(g_real_ghbn_called == 0);
+
+    g_mock_last_error = 0;
+    assert(ws2_gethostbyname_failfast("localhost.evil.com") == NULL);
+    assert(g_mock_last_error == 11001);
+    assert(g_real_ghbn_called == 0);
+
+    g_mock_last_error = 0;
+    assert(ws2_gethostbyname_failfast("127.0.0.1") == (void*)0xCAFEBABEULL);
+    assert(g_real_ghbn_called == 1);
+
+    assert(ws2_gethostbyname_failfast("LocalHost") == (void*)0xCAFEBABEULL);
+    assert(g_real_ghbn_called == 2);
+
+    assert(ws2_gethostbyname_failfast("") == (void*)0xCAFEBABEULL);
+    assert(g_real_ghbn_called == 3);
+
+    assert(ws2_gethostbyname_failfast(NULL) == (void*)0xCAFEBABEULL);
+    assert(g_real_ghbn_called == 4);
+
+    // 18-22. WS2_32!sendto
+    g_mock_last_error = 0;
+    g_real_sendto_called = 0;
+    sa_v4[4] = 8; sa_v4[5] = 8; sa_v4[6] = 8; sa_v4[7] = 8;
+    assert(ws2_sendto_failfast(0x11223344ULL, "ping", 4, 0x55, sa_v4, 16) == -1);
+    assert(g_mock_last_error == 10051);
+    assert(g_real_sendto_called == 0);
+
+    sa_v4[4] = 127; sa_v4[5] = 0; sa_v4[6] = 0; sa_v4[7] = 1;
+    g_expected_sendto_to = sa_v4;
+    g_expected_sendto_tolen = 16;
+    assert(ws2_sendto_failfast(0x11223344ULL, "ping", 4, 0x55, sa_v4, 16) == 4);
+    assert(g_real_sendto_called == 1);
+
+    sa_v6[8] = 0; sa_v6[9] = 0; sa_v6[23] = 1;
+    g_expected_sendto_to = sa_v6;
+    g_expected_sendto_tolen = 28;
+    assert(ws2_sendto_failfast(0x11223344ULL, "ping", 4, 0x55, sa_v6, 28) == 4);
+    assert(g_real_sendto_called == 2);
+
+    sa_v6[8] = 0x20; sa_v6[9] = 0x01;
+    g_mock_last_error = 0;
+    assert(ws2_sendto_failfast(0x11223344ULL, "ping", 4, 0x55, sa_v6, 28) == -1);
+    assert(g_mock_last_error == 10051);
+    assert(g_real_sendto_called == 2);
+
+    g_expected_sendto_to = NULL;
+    g_expected_sendto_tolen = 0;
+    assert(ws2_sendto_failfast(0x11223344ULL, "ping", 4, 0x55, NULL, 0) == 4);
+    assert(g_real_sendto_called == 3);
+
+    printf("ALL NET FAILFAST TESTS PASSED (22/22)\n");
     return 0;
 }

@@ -162,3 +162,124 @@ Lpe_ws2_allow:
     .byte 0xff, 0x25, 0x44, 0x55, 0x66, 0x77
 .globl _pe_ws2_end
 _pe_ws2_end:
+
+
+// Stub 4: ws2_gethostbyname_failfast -> .bind VA 0x146ca5500 (max 256 bytes)
+.globl _pe_ws2_gethostbyname_failfast
+_pe_ws2_gethostbyname_failfast:
+    test rcx, rcx
+    jz Lpe_ghbn_allow
+    cmp byte ptr [rcx], 0
+    je Lpe_ghbn_allow
+
+    cmp byte ptr [rcx], '1'
+    jne Lpe_ghbn_check_localhost
+    cmp byte ptr [rcx+1], '2'
+    jne Lpe_ghbn_check_localhost
+    cmp byte ptr [rcx+2], '7'
+    jne Lpe_ghbn_check_localhost
+    cmp byte ptr [rcx+3], '.'
+    jne Lpe_ghbn_check_localhost
+    cmp byte ptr [rcx+4], '0'
+    jne Lpe_ghbn_check_localhost
+    cmp byte ptr [rcx+5], '.'
+    jne Lpe_ghbn_check_localhost
+    cmp byte ptr [rcx+6], '0'
+    jne Lpe_ghbn_check_localhost
+    cmp byte ptr [rcx+7], '.'
+    jne Lpe_ghbn_check_localhost
+    cmp byte ptr [rcx+8], '1'
+    jne Lpe_ghbn_check_localhost
+    cmp byte ptr [rcx+9], 0
+    je Lpe_ghbn_allow
+
+Lpe_ghbn_check_localhost:
+    movzx eax, byte ptr [rcx]
+    or eax, 0x20
+    cmp eax, 'l'
+    jne Lpe_ghbn_block
+    movzx eax, byte ptr [rcx+1]
+    or eax, 0x20
+    cmp eax, 'o'
+    jne Lpe_ghbn_block
+    movzx eax, byte ptr [rcx+2]
+    or eax, 0x20
+    cmp eax, 'c'
+    jne Lpe_ghbn_block
+    movzx eax, byte ptr [rcx+3]
+    or eax, 0x20
+    cmp eax, 'a'
+    jne Lpe_ghbn_block
+    movzx eax, byte ptr [rcx+4]
+    or eax, 0x20
+    cmp eax, 'l'
+    jne Lpe_ghbn_block
+    movzx eax, byte ptr [rcx+5]
+    or eax, 0x20
+    cmp eax, 'h'
+    jne Lpe_ghbn_block
+    movzx eax, byte ptr [rcx+6]
+    or eax, 0x20
+    cmp eax, 'o'
+    jne Lpe_ghbn_block
+    movzx eax, byte ptr [rcx+7]
+    or eax, 0x20
+    cmp eax, 's'
+    jne Lpe_ghbn_block
+    movzx eax, byte ptr [rcx+8]
+    or eax, 0x20
+    cmp eax, 't'
+    jne Lpe_ghbn_block
+    cmp byte ptr [rcx+9], 0
+    je Lpe_ghbn_allow
+
+Lpe_ghbn_block:
+    mov rax, qword ptr gs:[0x30]
+    mov dword ptr [rax + 0x68], 11001
+    xor eax, eax
+    ret
+
+Lpe_ghbn_allow:
+    // Patched to jmp qword ptr [rip + disp32] -> 0x142199968
+    .byte 0xff, 0x25, 0x55, 0x66, 0x77, 0x88
+.globl _pe_ws2_ghbn_end
+_pe_ws2_ghbn_end:
+
+
+// Stub 5: ws2_sendto_failfast -> .bind VA 0x146ca5600 (max 128 bytes)
+.globl _pe_ws2_sendto_failfast
+_pe_ws2_sendto_failfast:
+    mov r11, qword ptr [rsp + 0x28]
+    test r11, r11
+    jz Lpe_sendto_allow
+    movzx eax, word ptr [r11]
+    cmp eax, 2
+    jne Lpe_sendto_check_v6
+    mov eax, dword ptr [r11+4]
+    and eax, 0xFF
+    cmp eax, 127
+    je Lpe_sendto_allow
+    jmp Lpe_sendto_block
+
+Lpe_sendto_check_v6:
+    cmp eax, 23
+    jne Lpe_sendto_block
+    mov rax, qword ptr [r11+8]
+    test rax, rax
+    jnz Lpe_sendto_block
+    mov rax, qword ptr [r11+16]
+    mov r10, 0x0100000000000000
+    cmp rax, r10
+    je Lpe_sendto_allow
+
+Lpe_sendto_block:
+    mov rax, qword ptr gs:[0x30]
+    mov dword ptr [rax + 0x68], 10051
+    mov eax, -1
+    ret
+
+Lpe_sendto_allow:
+    // Patched to jmp qword ptr [rip + disp32] -> 0x142199920
+    .byte 0xff, 0x25, 0x66, 0x77, 0x88, 0x99
+.globl _pe_ws2_sendto_end
+_pe_ws2_sendto_end:

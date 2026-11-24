@@ -15,7 +15,8 @@ Binary patches, x86_64 assembly sources, unit tests, and save-backup utilities t
 | :--- | :--- |
 | Unpatched base (`v1.0` exe + MyCAREER unlocker from v1.12 release) | `05f9e593067d4e43da63e93d1b0ad426a441f9ad18d53b36f12a6961193cae23` |
 | PTSM fix only (`--ptsm-only`) | `2784fe59e6ff602c8efef84d927d7f718db875bc2b6e527c724646635aaff6ca` |
-| Full patch: PTSM fix + Network fail-fast (`--all`, recommended) | `6aa419978a78dab941b6cafce4a777d8237bfad52d3e2e01dc8e729f1deabb36` |
+| Full patch: PTSM fix + Network fail-fast v1 (legacy) | `6aa419978a78dab941b6cafce4a777d8237bfad52d3e2e01dc8e729f1deabb36` |
+| Full patch: PTSM fix + Full Network fail-fast v2 (`--all`, recommended) | `2dc02098412f96f46749b4cb64a2aa49c6e839510199fb15840d683bb0c3fc8e` |
 
 ---
 
@@ -28,7 +29,7 @@ Binary patches, x86_64 assembly sources, unit tests, and save-backup utilities t
 
 ### 2. Network Fail-Fast Patch
 - **Symptom:** Long freezes or hangs when accidentally clicking online/VC-synced features (Neighborhood, MyTEAM, 2K Store, etc.), since official NBA 2K22 servers are shut down.
-- **Fix:** Hooks `WinHttpConnect` (`0x141eba545`) and all 3 `WS2_32!connect` call sites (`0x141eadcb4`, `0x141eae156`, `0x142132b6a`). Loopback addresses (`127.0.0.1`, `localhost`, `::1`) are allowed; external connections fail immediately with `ERROR_INTERNET_CANNOT_CONNECT` (`12029`) or `WSAECONNREFUSED` (`10061`).
+- **Fix:** Hooks `WinHttpConnect` (`0x141eba545`), all 3 `WS2_32!connect` call sites (`0x141eadcb4`, `0x141eae156`, `0x142132b6a`), the external `WS2_32!gethostbyname` DNS wrapper (`0x142125913`, leaving local-hostname discovery at `0x141e18b06`/`0x141e18b14` untouched), and `WS2_32!sendto` (`0x141eaef15`). Loopback addresses (`127.0.0.1`, `localhost`, `::1`) are allowed; external connections/lookups fail immediately with `ERROR_INTERNET_CANNOT_CONNECT` (`12029`), `WSAECONNREFUSED` (`10061`), `WSAHOST_NOT_FOUND` (`11001`), or `WSAENETUNREACH` (`10051`).
 - **Expected Behavior:** Accessing online-only menus now immediately displays `Error code: 7cfb1845` with a working **OK** button instead of hanging.
 
 ### 3. Save Backup & Restore Utility

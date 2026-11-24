@@ -21,7 +21,8 @@ EXPECTED_EXE_SIZE = 83_000_504
 KNOWN_EXE_HASHES = {
     "05f9e593067d4e43da63e93d1b0ad426a441f9ad18d53b36f12a6961193cae23": "unpatched (base v1.0 + MyCAREER unlocker)",
     "2784fe59e6ff602c8efef84d927d7f718db875bc2b6e527c724646635aaff6ca": "ptsm-only (PTSM fix applied)",
-    "6aa419978a78dab941b6cafce4a777d8237bfad52d3e2e01dc8e729f1deabb36": "fully-patched (PTSM fix + Network fail-fast)",
+    "6aa419978a78dab941b6cafce4a777d8237bfad52d3e2e01dc8e729f1deabb36": "fully-patched-v1 (PTSM + WinHttpConnect + WS2 connect; run apply to add DNS/UDP fail-fast)",
+    "2dc02098412f96f46749b4cb64a2aa49c6e839510199fb15840d683bb0c3fc8e": "fully-patched (PTSM + full Network fail-fast: WinHttp, TCP connect, DNS gethostbyname, UDP sendto)",
 }
 
 # --- PTSM Fixup ---
@@ -76,6 +77,28 @@ NET_CAVES = [
         ),
         "WS2_32!connect #2/#3 stub",
     ),
+    (
+        0x04EEE900,
+        bytes.fromhex(
+            "4885c90f84cc0000008039000f84c3000000803931753a807901327534807902"
+            "37752e8079032e75288079043075228079052e751c8079063075168079072e75"
+            "1080790831750a807909000f84840000000fb60183c82083f86c75660fb64101"
+            "83c82083f86f755a0fb6410283c82083f863754e0fb6410383c82083f8617542"
+            "0fb6410483c82083f86c75360fb6410583c82083f868752a0fb6410683c82083"
+            "f86f751e0fb6410783c82083f87375120fb6410883c82083f874750680790900"
+            "741365488b042530000000c74068f92a000031c0c3ff258d434ffb"
+        ),
+        "WS2_32!gethostbyname stub",
+    ),
+    (
+        0x04EEEA00,
+        bytes.fromhex(
+            "4c8b5c24284d85db7450410fb70383f8027510418b430425ff00000083f87f74"
+            "39eb2183f817751c498b43084885c07513498b431049ba00000000000000014c"
+            "39d0741665488b042530000000c7406843270000b8ffffffffc3ff25c0424ffb"
+        ),
+        "WS2_32!sendto stub",
+    ),
 ]
 
 NET_SITES = [
@@ -83,6 +106,8 @@ NET_SITES = [
     (0x01EAD2B4, bytes.fromhex("ff15debc2e00"), bytes.fromhex("e96777df0490"), "WS2_32!connect #1"),
     (0x01EAD756, bytes.fromhex("ff153cb82e00"), bytes.fromhex("e84573df0490"), "WS2_32!connect #2"),
     (0x0213216A, bytes.fromhex("ff15286e0600"), bytes.fromhex("e83129b70490"), "WS2_32!connect #3"),
+    (0x02124F13, bytes.fromhex("ff154f400700"), bytes.fromhex("e8e8fbb70490"), "WS2_32!gethostbyname"),
+    (0x01EAE515, bytes.fromhex("ff1505aa2e00"), bytes.fromhex("e8e666df0490"), "WS2_32!sendto"),
 ]
 
 
@@ -141,40 +166,42 @@ def apply_ptsm(f, force: bool) -> bool:
 
 
 def apply_net(f, force: bool) -> bool:
-    already_sites = True
-    for off, orig, patched, label in NET_SITES:
-        f.seek(off)
-        cur = f.read(len(orig))
-        if cur != patched:
-            already_sites = False
-            if cur != orig and not force:
-                raise RuntimeError(
-                    f"[NET] Unexpected bytes at {label} (0x{off:x}): {cur.hex()}. "
-                    "Use --force to override."
-                )
-
-    already_caves = True
+    caves_to_write = []
     for off, stub, label in NET_CAVES:
         f.seek(off)
         cur = f.read(len(stub))
-        if cur != stub:
-            already_caves = False
-            if cur != b"\x00" * len(stub) and not force:
-                raise RuntimeError(
-                    f"[NET] .bind cave for {label} at 0x{off:x} is not empty. Use --force to override."
-                )
+        if cur == stub:
+            continue
+        if cur != b"\x00" * len(stub) and not force:
+            raise RuntimeError(
+                f"[NET] .bind cave for {label} at 0x{off:x} is not empty. Use --force to override."
+            )
+        caves_to_write.append((off, stub, label))
 
-    if already_sites and already_caves:
+    sites_to_write = []
+    for off, orig, patched, label in NET_SITES:
+        f.seek(off)
+        cur = f.read(len(orig))
+        if cur == patched:
+            continue
+        if cur != orig and not force:
+            raise RuntimeError(
+                f"[NET] Unexpected bytes at {label} (0x{off:x}): {cur.hex()}. "
+                "Use --force to override."
+            )
+        sites_to_write.append((off, patched, label))
+
+    if not caves_to_write and not sites_to_write:
         print("[NET]  Already applied, skipping.")
         return False
 
-    for off, stub, label in NET_CAVES:
+    for off, stub, label in caves_to_write:
         f.seek(off)
         f.write(stub)
-    for off, orig, patched, label in NET_SITES:
+    for off, patched, label in sites_to_write:
         f.seek(off)
         f.write(patched)
-    print("[NET]  Applied WinHttpConnect + WS2_32!connect fail-fast stubs.")
+    print(f"[NET]  Applied {len(sites_to_write)} call-site hook(s) and {len(caves_to_write)} stub(s).")
     return True
 
 

@@ -124,3 +124,120 @@ Lws2_block:
 
 Lws2_allow:
     jmp _mock_real_ws2_connect
+
+
+// WS2_32!gethostbyname(const char* name [rcx])
+// Allow: NULL, "", "127.0.0.1", case-insensitive "localhost"
+// Block: set LastError = 11001 (WSAHOST_NOT_FOUND), return NULL
+.globl _ws2_gethostbyname_failfast
+_ws2_gethostbyname_failfast:
+    test rcx, rcx
+    jz Lghbn_allow
+    cmp byte ptr [rcx], 0
+    je Lghbn_allow
+
+    // Check "127.0.0.1" (9 bytes + NUL)
+    cmp byte ptr [rcx], '1'
+    jne Lghbn_check_localhost
+    cmp byte ptr [rcx+1], '2'
+    jne Lghbn_check_localhost
+    cmp byte ptr [rcx+2], '7'
+    jne Lghbn_check_localhost
+    cmp byte ptr [rcx+3], '.'
+    jne Lghbn_check_localhost
+    cmp byte ptr [rcx+4], '0'
+    jne Lghbn_check_localhost
+    cmp byte ptr [rcx+5], '.'
+    jne Lghbn_check_localhost
+    cmp byte ptr [rcx+6], '0'
+    jne Lghbn_check_localhost
+    cmp byte ptr [rcx+7], '.'
+    jne Lghbn_check_localhost
+    cmp byte ptr [rcx+8], '1'
+    jne Lghbn_check_localhost
+    cmp byte ptr [rcx+9], 0
+    je Lghbn_allow
+
+Lghbn_check_localhost:
+    movzx eax, byte ptr [rcx]
+    or eax, 0x20
+    cmp eax, 'l'
+    jne Lghbn_block
+    movzx eax, byte ptr [rcx+1]
+    or eax, 0x20
+    cmp eax, 'o'
+    jne Lghbn_block
+    movzx eax, byte ptr [rcx+2]
+    or eax, 0x20
+    cmp eax, 'c'
+    jne Lghbn_block
+    movzx eax, byte ptr [rcx+3]
+    or eax, 0x20
+    cmp eax, 'a'
+    jne Lghbn_block
+    movzx eax, byte ptr [rcx+4]
+    or eax, 0x20
+    cmp eax, 'l'
+    jne Lghbn_block
+    movzx eax, byte ptr [rcx+5]
+    or eax, 0x20
+    cmp eax, 'h'
+    jne Lghbn_block
+    movzx eax, byte ptr [rcx+6]
+    or eax, 0x20
+    cmp eax, 'o'
+    jne Lghbn_block
+    movzx eax, byte ptr [rcx+7]
+    or eax, 0x20
+    cmp eax, 's'
+    jne Lghbn_block
+    movzx eax, byte ptr [rcx+8]
+    or eax, 0x20
+    cmp eax, 't'
+    jne Lghbn_block
+    cmp byte ptr [rcx+9], 0
+    je Lghbn_allow
+
+Lghbn_block:
+    mov dword ptr [_g_mock_last_error + rip], 11001
+    xor eax, eax
+    ret
+
+Lghbn_allow:
+    jmp _mock_real_ws2_gethostbyname
+
+
+// WS2_32!sendto(SOCKET s [rcx], const char* buf [rdx], int len [r8], int flags [r9], const struct sockaddr* to [rsp+0x28], int tolen [rsp+0x30])
+// Note: preserve rcx, rdx, r8, r9, rsp, and callee-saved regs; use r11 for `to`.
+.globl _ws2_sendto_failfast
+_ws2_sendto_failfast:
+    mov r11, qword ptr [rsp + 0x28]
+    test r11, r11
+    jz Lsendto_allow
+    movzx eax, word ptr [r11]
+    cmp eax, 2 // AF_INET
+    jne Lsendto_check_v6
+    mov eax, dword ptr [r11+4]
+    and eax, 0xFF
+    cmp eax, 127
+    je Lsendto_allow
+    jmp Lsendto_block
+
+Lsendto_check_v6:
+    cmp eax, 23 // AF_INET6
+    jne Lsendto_block
+    mov rax, qword ptr [r11+8]
+    test rax, rax
+    jnz Lsendto_block
+    mov rax, qword ptr [r11+16]
+    mov r10, 0x0100000000000000
+    cmp rax, r10
+    je Lsendto_allow
+
+Lsendto_block:
+    mov dword ptr [_g_mock_last_error + rip], 10051
+    mov eax, -1
+    ret
+
+Lsendto_allow:
+    jmp _mock_real_ws2_sendto
