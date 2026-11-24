@@ -16,7 +16,8 @@ Binary patches, x86_64 assembly sources, unit tests, and save-backup utilities t
 | Unpatched base (`v1.0` exe + MyCAREER unlocker from v1.12 release) | `05f9e593067d4e43da63e93d1b0ad426a441f9ad18d53b36f12a6961193cae23` |
 | PTSM fix only (`--ptsm-only`) | `2784fe59e6ff602c8efef84d927d7f718db875bc2b6e527c724646635aaff6ca` |
 | Full patch: PTSM fix + Network fail-fast v1 (legacy) | `6aa419978a78dab941b6cafce4a777d8237bfad52d3e2e01dc8e729f1deabb36` |
-| Full patch: PTSM fix + Full Network fail-fast v2 (`--all`, recommended) | `2dc02098412f96f46749b4cb64a2aa49c6e839510199fb15840d683bb0c3fc8e` |
+| Full patch: PTSM fix + Full Network fail-fast v2 (legacy) | `2dc02098412f96f46749b4cb64a2aa49c6e839510199fb15840d683bb0c3fc8e` |
+| Full patch: PTSM fix + NikeIdStyle shoe fix + Full Network fail-fast v3 (`--all`, recommended) | `0e3262d3376f75d053820976e890c948193bd4a5e6f4965a2d5e6692b325c61a` |
 
 ---
 
@@ -26,6 +27,11 @@ Binary patches, x86_64 assembly sources, unit tests, and save-backup utilities t
 - **Symptom:** Instant crash-to-desktop (`0xc0000005` at RVA `0x018d6cac`) when entering MyCAREER **Practice**, **Neighborhood**, or other stadium-loaded scenes.
 - **Root Cause:** The v1.12 release ships v1.12 `ptsm_*.iff` assets (`PTSTADIUM_MARKER_GROUP` stride `0xFB0`, 500 pointer slots) alongside a v1.0 `NBA2K22.exe` that expects `0x210` (64 slots).
 - **Fix:** Hooks the PTSM loader at `0x1418d7a50` and runs an in-place `.bind` code-cave converter (`0x146ca5200`) that auto-detects v1.12 vs v1.0 stride and converts `0xFB0` → `0x210` on load.
+
+### 1b. NikeIdStyle v1.12 Shoe Fix (Post-Game MyCAREER CTD)
+- **Symptom:** Crash-to-desktop (`0xc0000005` at RVA `0x00920297`) after completing the first MyCAREER game when loading v1.12 shoe style assets (`shoes/shoe_style_2029.iff` or `shoes/shoe_style_8008.iff`).
+- **Root Cause:** Those 2 v1.12 `.NikeIdStyle` files populate `[+0xf8]`/`[+0x100]` using a `0x10`-byte outer stride and float fields, whereas v1.0 `NBA2K22.exe` expects a `0x18`-byte stride of 3 pointers.
+- **Fix:** Hooks `0x14092024c` → `.bind` guard (`0x146ca5680`) to detect the v1.12 overlap (`arr[0].rel + 7 < cnt * 0x18`), clear `[+0xf8]`/`[+0x100]`, and skip cleanly.
 
 ### 2. Network Fail-Fast Patch
 - **Symptom:** Long freezes or hangs when accidentally clicking online/VC-synced features (Neighborhood, MyTEAM, 2K Store, etc.), since official NBA 2K22 servers are shut down.
@@ -55,6 +61,7 @@ python3 patcher/patch_nba2k22.py apply /path/to/NBA2K22.exe
 
 Optional flags:
 - `--ptsm-only` — apply only the MyCAREER PTSM crash fix
+- `--nikeid-only` — apply only the NikeIdStyle v1.12 shoe fix
 - `--net-only` — apply only the Network fail-fast patch
 - `--no-backup` — skip automatic `.bak` creation
 

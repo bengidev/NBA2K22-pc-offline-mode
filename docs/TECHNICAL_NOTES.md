@@ -11,6 +11,7 @@
 | `0x146ca54a0..0x146ca54f8` | `0x04eee8a0..0x04eee8f8` | 89 B | `ws2_connect_failfast` (`WS2_32!connect` sites #2 & #3 hook) |
 | `0x146ca5500..0x146ca55da` | `0x04eee900..0x04eee9da` | 219 B | `ws2_gethostbyname_failfast` (`WS2_32!gethostbyname` external DNS hook) |
 | `0x146ca5600..0x146ca565f` | `0x04eeea00..0x04eeea5f` | 96 B | `ws2_sendto_failfast` (`WS2_32!sendto` external UDP hook) |
+| `0x146ca5680..0x146ca56cf` | `0x04eeea80..0x04eeeacf` | 80 B | `nikeid_f8_guard` (`NikeIdStyle` `[+0xf8]`/`[+0x100]` v1.12 guard) |
 | `0x146ca6000+` | `0x04eef400+` | — | Existing unlocker strings/buffers (untouched) |
 
 ---
@@ -48,3 +49,12 @@
 ## 4. UI Menu Guard Audit Rationale
 
 `NavList_Main` and `TkWorld_Gateway_SetMode` dispatch menu transitions through indirect vtables and an internal state machine. Intercepting them mid-transition risks leaving the UI in a soft-locked state. Because the Network Fail-Fast patch already forces external connections to fail immediately and cleanly surface `Error code: 7cfb1845` with an **OK** button, UI interception was intentionally omitted.
+
+
+---
+
+## 5. `NikeIdStyle` `[+0xf8]` / `[+0x100]` v1.0 vs v1.12 Mismatch
+
+- **v1.0 (`0x1409200c0`):** Expects `[+0xf8]` entries of `0x18` bytes each, where each entry contains `{ int32_t count; int32_t pad; void* items; void* ... }` and each inner item is `0x18` bytes of 3 pointers.
+- **v1.12 (`shoes/shoe_style_2029.iff`, `shoes/shoe_style_8008.iff`):** Uses a `0x10`-byte outer stride (`arr[0].items_rel + 7 == cnt * 0x10 < cnt * 0x18`) and inner items `{ void* ptr; float; float; uint64_t flags }`.
+- **Detection & Unload Safety:** When `cnt > 0` and `(arr == NULL || (uint64_t)(arr[0].items_rel + 7) < (uint64_t)cnt * 0x18)`, `nikeid_f8_guard` (`0x146ca5680`) zeroes `[rdi + 0xf8]` and `[rdi + 0x100]` and jumps to `0x1409202ef`, so both load (`0x1409200c0`) and unload (`0x140920370`) skip the section cleanly.

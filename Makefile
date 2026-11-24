@@ -21,6 +21,8 @@ test:
 	$(RUN_X86) ./build/test_ptsm </dev/null
 	$(CC_X86) -O2 tests/test_net_failfast.c src/net_failfast_test.s -o build/test_net_failfast
 	$(RUN_X86) ./build/test_net_failfast
+	$(CC_X86) -O2 tests/test_nikeid.c src/nikeid_guard_test.s -o build/test_nikeid
+	$(RUN_X86) ./build/test_nikeid </dev/null
 
 verify-stubs:
 	python3 src/rebuild_stubs.py

@@ -23,6 +23,7 @@ EXPECTED_SHA256 = {
     "net_stub3": "5c04dc0543d07517f196b025ad410c3d312327f5dcd1fd05aac8bc82e8b4b443",
     "net_stub4": "02c0bb9deb6da5c0ba71c26d21a455884ad7c6d5cb1d1606b1471d9da7640b65",
     "net_stub5": "38630fd32dfdece6b1b1ced646b95a53b9715ab1e08bc9725037d994fc75a257",
+    "nikeid_stub": "9ce691de6154bcec23253d66080bbf05d131738485566a24a625f9814c591de9",
 }
 
 
@@ -77,20 +78,26 @@ def main() -> int:
     os.makedirs(BUILD_DIR, exist_ok=True)
     ptsm_obj = assemble("ptsm_fixup.s", "ptsm_fixup.o")
     net_obj = assemble("net_failfast_pe.s", "net_failfast_pe.o")
+    nikeid_obj = assemble("nikeid_guard_pe.s", "nikeid_guard_pe.o")
 
     ptsm_stub = extract_macho_text(ptsm_obj)
 
     net_text = extract_macho_text(net_obj)
     syms = get_symbols(net_obj)
 
+    nikeid_text = extract_macho_text(nikeid_obj)
+    nikeid_syms = get_symbols(nikeid_obj)
+
     stub1 = bytearray(net_text[syms["_pe_winhttp_connect_failfast"] : syms["_pe_winhttp_end"]])
     stub2 = bytearray(net_text[syms["_pe_ws2_connect1_failfast"] : syms["_pe_ws2_1_end"]])
     stub3 = bytearray(net_text[syms["_pe_ws2_connect_failfast"] : syms["_pe_ws2_end"]])
     stub4 = bytearray(net_text[syms["_pe_ws2_gethostbyname_failfast"] : syms["_pe_ws2_ghbn_end"]])
     stub5 = bytearray(net_text[syms["_pe_ws2_sendto_failfast"] : syms["_pe_ws2_sendto_end"]])
+    nikeid_stub = bytearray(nikeid_text[nikeid_syms["_pe_nikeid_f8_guard"] : nikeid_syms["_pe_nikeid_f8_guard_end"]])
 
     assert len(stub4) <= 256, f"stub4 too large: {len(stub4)}"
     assert len(stub5) <= 128, f"stub5 too large: {len(stub5)}"
+    assert len(nikeid_stub) <= 128, f"nikeid_stub too large: {len(nikeid_stub)}"
 
     patch_placeholder(stub1, 0x146CA5320, b"\x11\x22\x33\x44", 0x142199880)
     patch_placeholder(stub2, 0x146CA5420, b"\x11\x22\x33\x44", 0x141EADE69)
@@ -99,6 +106,8 @@ def main() -> int:
     patch_placeholder(stub3, 0x146CA54A0, b"\x44\x55\x66\x77", 0x142199998)
     patch_placeholder(stub4, 0x146CA5500, b"\x55\x66\x77\x88", 0x142199968)
     patch_placeholder(stub5, 0x146CA5600, b"\x66\x77\x88\x99", 0x142199920)
+    patch_placeholder(nikeid_stub, 0x146CA5680, b"\x11\x22\x33\x44", 0x1409202EF)
+    patch_placeholder(nikeid_stub, 0x146CA5680, b"\x22\x33\x44\x55", 0x14092025C)
 
     stubs = {
         "ptsm_stub": ptsm_stub,
@@ -107,6 +116,7 @@ def main() -> int:
         "net_stub3": bytes(stub3),
         "net_stub4": bytes(stub4),
         "net_stub5": bytes(stub5),
+        "nikeid_stub": bytes(nikeid_stub),
     }
 
     for name, data in stubs.items():
@@ -120,7 +130,7 @@ def main() -> int:
             print(f"Expected: {expected}", file=sys.stderr)
             return 1
 
-    print("ALL 6 STUBS REBUILT AND VERIFIED")
+    print("ALL 7 STUBS REBUILT AND VERIFIED")
     return 0
 
 
